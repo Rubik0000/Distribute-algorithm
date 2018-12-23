@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Threading;
 
 namespace DistributeResourses
 {
@@ -89,7 +90,9 @@ namespace DistributeResourses
                 t.OnWork += Work;
                 t.OnWaitChange += CountWait;
                 t.OnDoAnother += Another;
+                Thread.Sleep(16);         
             }
+            Thread.Sleep(500);
             foreach (var p in _processes)
             {
                 p.Start();

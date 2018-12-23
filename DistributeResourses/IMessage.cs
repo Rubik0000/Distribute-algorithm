@@ -8,6 +8,7 @@ namespace DistributeResourses
 {
     interface IMessage
     {
-        IProcess Sender { get; }
+        int SenderId { get; }
+        uint Time { get; }
     }
 }

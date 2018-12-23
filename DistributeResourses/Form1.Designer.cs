@@ -115,7 +115,7 @@
             this.Controls.Add(this.txtBxPrc2);
             this.Controls.Add(this.txtBxPrc1);
             this.Name = "Form1";
-            this.Text = "Form1";
+            this.Text = "Распределенный алгоритм";
             this.ResumeLayout(false);
             this.PerformLayout();
 

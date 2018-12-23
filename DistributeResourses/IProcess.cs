@@ -8,14 +8,10 @@ namespace DistributeResourses
 {
     interface IProcess
     {
-        void SendMessage(IMessage msg);
-
-        void GivePermission();
+        uint ListenerId { get; }
 
         void Start();
 
         void Stop();
-
-        DateTime startWait { get; }
     }
 }

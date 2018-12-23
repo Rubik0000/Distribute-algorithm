@@ -16,6 +16,9 @@ namespace DistributeResourses
 
     class Process : IProcess
     {
+        static private readonly uint REQUEST_RESOURCE = 0x400 + 0x001;
+        static private readonly uint PERMIT_RESOURCE = REQUEST_RESOURCE + 0x001;
+
         private Queue<IMessage> _queueRequests = new Queue<IMessage>();
         private Thread _thread;
         private List<IProcess> _listProcesses;        
@@ -24,12 +27,14 @@ namespace DistributeResourses
         private State _state;
         private int _countWait = -1;
         private object locker = new object();
+        private uint startWait;
 
         public event Action<int> OnWait;
         public event Action<int> OnWork;
         public event Action<int, int> OnWaitChange;
         public event Action<int> OnDoAnother;
 
+        private bool StartWork = false;
         protected int CountWait
         {
             get => _countWait;
@@ -41,45 +46,87 @@ namespace DistributeResourses
         }
 
         public int Number { get; private set; }
-        public DateTime startWait { get; private set; }
+        public uint ListenerId { get; private set; }
 
         public Process(int number, List<IProcess> proces)
         {
             _listProcesses = proces;
-            Number = number;            
+            Number = number;
+            _thread = new Thread(() =>
+            {                
+                _listener = new Thread(Listen);
+                _listener.IsBackground = true;
+                _listener.Start();
+                while (!StartWork)
+                    Thread.Sleep(100);
+                while (true)
+                {
+                    Thread.Sleep(_random.Next(10, 40));
+                    if (_random.Next() % 2 == 0)
+                    {
+                        WorkWithRes();
+                    }
+                    else
+                    {
+                        DoAnotherWork();
+                    }
+                }
+            });            
+            _thread.IsBackground = true;
+            _thread.Start();
         }
        
         private void Listen()
         {
+            MSG mes;
+            User32.PeekMessage(out mes, IntPtr.Zero, 0x400, 0x400, 0x0000);
+            ListenerId = Kernel32.GetCurrentWin32ThreadId();
+            while (!StartWork)
+                Thread.Sleep(100);
             while (true)
             {
+                MSG message;
+                if (User32.PeekMessage(out message, new IntPtr(-1), 0, 0, 0x0001))
+                {
+                    if (message.message == PERMIT_RESOURCE)
+                    {
+                        ++CountWait;
+                    }
+                    else if (message.message == REQUEST_RESOURCE)
+                    {
+                        _queueRequests.Enqueue(new Message(message.wParam.ToInt32(), message.time));
+                    }
+                }                
                 if (_queueRequests.Count != 0)
                 {
                     if (_state == State.spare)
                     {
                         lock (_queueRequests)
                         {
-                            var msg = _queueRequests.Dequeue();
-                            msg.Sender.GivePermission();
+                            var msg = _queueRequests.Dequeue();                            
+                            User32.PostThreadMessage((uint)msg.SenderId, PERMIT_RESOURCE, IntPtr.Zero, IntPtr.Zero);                        
                         }
                     }
                     else if (_state == State.wait)
                     {
-                        var sender = _queueRequests.Peek().Sender;
-                        var t = sender.startWait.Ticks;
-                        if (t == startWait.Ticks)
+                        var msg = _queueRequests.Peek();
+                        if (msg.Time < startWait)
                         {
-                            startWait = startWait.AddTicks(_random.Next());                 
+                            if (_random.Next() % 2 == 0)
+                                ++startWait;
+                            else
+                                --startWait;
                         }
-                        else if (t < startWait.Ticks) {
-                            _queueRequests.Dequeue().Sender.GivePermission();
+                        if (msg.Time < startWait)
+                        {
+                            _queueRequests.Dequeue();
+                            User32.PostThreadMessage((uint)msg.SenderId, PERMIT_RESOURCE, IntPtr.Zero, IntPtr.Zero);
                         }
                     }
                 }
                 Thread.Sleep(_random.Next(30, 60));
-                //Thread.Sleep(20);
             }
-        }
+        }        
 
         private void WorkWithRes()
         {
@@ -87,19 +134,19 @@ namespace DistributeResourses
             foreach (var proc in _listProcesses)
             {
                 if (proc == this)
-                    continue;
-                proc.SendMessage(new Message(this));
+                    continue;                
+                User32.PostThreadMessage(proc.ListenerId, REQUEST_RESOURCE, new IntPtr(ListenerId), IntPtr.Zero);                
             }
             _state = State.wait;
-            startWait = DateTime.Now;
+            startWait = (uint)Kernel32.GetTickCount();
             OnWait?.Invoke(Number);
             int m = _listProcesses.Count - 1;
             while (CountWait < m)
             {
-                Thread.Sleep(15);
+                Thread.Sleep(10);
             }
             _state = State.work;
-            startWait = DateTime.MinValue;
+            startWait = uint.MinValue;
             CountWait = -1;
 
             OnWork?.Invoke(Number);
@@ -115,28 +162,10 @@ namespace DistributeResourses
             Thread.Sleep(_random.Next(2000, 4000));
         }
 
+        public uint u;
         public void Start()
         {
-            _thread = new Thread(() => 
-            {
-                _listener = new Thread(Listen);
-                _listener.IsBackground = true;
-                _listener.Start();
-                while (true)
-                {
-                    Thread.Sleep(_random.Next(10, 40));
-                    if (_random.Next() % 2 == 0)
-                    {
-                        WorkWithRes();
-                    }
-                    else
-                    {
-                        DoAnotherWork();
-                    }                    
-                }
-            });
-            _thread.IsBackground = true;
-            _thread.Start();
+            StartWork = true;            
         }
 
         public void Stop()
@@ -146,22 +175,6 @@ namespace DistributeResourses
                 _thread?.Abort();
             }
             catch { }
-        }
-
-        public void SendMessage(IMessage msg)
-        {
-            lock (locker)
-            {
-                _queueRequests.Enqueue(msg);
-            }
-        }
-        
-        public void GivePermission()
-        {
-            lock (locker)
-            {                
-                ++CountWait;                
-            }
-        }
+        }       
     }
 }

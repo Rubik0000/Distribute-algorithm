@@ -8,11 +8,14 @@ namespace DistributeResourses
 {
     class Message : IMessage
     {
-        public IProcess Sender { get; private set; }
+        public int SenderId { get; }
 
-        public Message(IProcess sender)
+        public uint Time { get; }
+
+        public Message(int sender, uint time)
         {
-            Sender = sender;
+            SenderId = sender;
+            Time = time;
         }
     }
 }
